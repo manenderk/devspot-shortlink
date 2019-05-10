@@ -15,7 +15,7 @@ global $my_nonce;
 
 function generateDB(){
     try{
-        $devspot_shortlink_db_version = "0.0.3";
+        $devspot_shortlink_db_version = "0.0.5";
         $installed_ver = get_option("devspot_shortlink_db_version");
         if($installed_ver != $devspot_shortlink_db_version){
             global $wpdb;
@@ -140,3 +140,13 @@ add_action( 'rest_api_init', function () {
 		'callback' => 'devspot_get_shortlink',
 	));
 });
+
+function devspot_shortlink_redirect(){
+    global $wp;
+    $url = $wp->request;
+    if(strpos($url, "dt") === 0 && strlen($url)<= 8){
+        echo 'this is a shortlink';
+        exit;
+    }
+}
+add_action('wp', 'devspot_shortlink_redirect');
