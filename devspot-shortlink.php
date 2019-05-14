@@ -10,40 +10,95 @@ Version: 0.0.1
 
 include 'shortlink.php';
 
+define('SHORTLINK_TABLE', 'devspot_shortlinks');
+define('USER_TABLE', 'users');
+define('SHORTLINK_STATS_TABLE', 'devspot_shortlink_stats');
+define('PLUGIN_VER', '0.0.2');
+
 global $my_nonce;
 
+function createTables(){
+    require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
 
-function generateDB(){
-    try{
-        $devspot_shortlink_db_version = "0.0.5";
-        $installed_ver = get_option("devspot_shortlink_db_version");
-        if($installed_ver != $devspot_shortlink_db_version){
-            global $wpdb;
-            $table_name = $wpdb->prefix . "devspot_shortlinks";
-            $user_table_name = $wpdb->prefix . "users";
-            $charset_collate = $wpdb->get_charset_collate();
-            $sql = "CREATE TABLE $table_name (
-                id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-                userId bigint(20) UNSIGNED NOT NULL,
-                shortLink varchar(20) NOT NULL,
-                redirectLink varchar(500) NOT NULL,
-                created datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
-                PRIMARY KEY  (id),
-                FOREIGN KEY (userId) REFERENCES $user_table_name(ID)
-            ) $charset_collate;";
+    global $wpdb;
     
-            require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
-            dbDelta( $sql );             
-            update_option('devspot_shortlink_db_version', $devspot_shortlink_db_version);
+    $shortlinkTable = $wpdb->prefix . SHORTLINK_TABLE;
+    $user_table_name = $wpdb->prefix . USER_TABLE;
+    $shortlinkStatsTable = $wpdb->prefix . SHORTLINK_STATS_TABLE;
+    $charset_collate = $wpdb->get_charset_collate();
+
+    $sql = "CREATE TABLE $shortlinkTable (
+        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        userId bigint(20) UNSIGNED NOT NULL,
+        shortLink varchar(20) NOT NULL,
+        redirectLink varchar(500) NOT NULL,
+        created datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
+        PRIMARY KEY  (id),
+        FOREIGN KEY (userId) REFERENCES $user_table_name(ID) ON DELETE CASCADE
+    ) $charset_collate;";    
+    dbDelta( $sql );      
+    
+    $sql = "CREATE TABLE $shortlinkStatsTable (
+        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        shortLinkId bigint(20) UNSIGNED NOT NULL,
+        referer varchar(50) NOT NULL,
+        country varchar(20) NOT NULL,
+        visited datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
+        PRIMARY KEY  (id),
+        FOREIGN KEY (shortLinkId) REFERENCES $shortlinkTable(id) ON DELETE CASCADE
+    ) $charset_collate;";
+    dbDelta( $sql );          
+}
+
+function upgradeTables(){
+    require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
+
+    global $wpdb;
+    
+    $shortlinkTable = $wpdb->prefix . SHORTLINK_TABLE;
+    $user_table_name = $wpdb->prefix . USER_TABLE;
+    $shortlinkStatsTable = $wpdb->prefix . SHORTLINK_STATS_TABLE;
+    $charset_collate = $wpdb->get_charset_collate();
+
+    $sql = "CREATE TABLE $shortlinkTable (
+        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        userId bigint(20) UNSIGNED NOT NULL,
+        shortLink varchar(20) NOT NULL,
+        redirectLink varchar(500) NOT NULL,
+        created datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
+        PRIMARY KEY  (id)        
+    ) $charset_collate;";    
+    dbDelta( $sql );      
+    
+    $sql = "CREATE TABLE $shortlinkStatsTable (
+        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        shortLinkId bigint(20) UNSIGNED NOT NULL,
+        referer varchar(50) NOT NULL,
+        country varchar(20) NOT NULL,
+        visited datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
+        PRIMARY KEY  (id)
+    ) $charset_collate;";
+    dbDelta( $sql );       
+}
+
+function operateDB(){
+    try{
+        $installed_ver = get_option("devspot_shortlink_db_version");
+        if($installed_ver === false){
+            createTables();
+        }
+        else if($installed_ver != PLUGIN_VER){
+            upgradeTables();
         }
     }
     catch (Exception $e){
         error_log("Devspot Shortlink $e");
-    }    
+    }
 }
 
 function activate_devspot_shortlink() {
-    generateDB();
+    operateDB();
+    update_option('devspot_shortlink_db_version', PLUGIN_VER);
 }
 register_activation_hook( __FILE__, 'activate_devspot_shortlink' );
 
@@ -109,7 +164,6 @@ add_action( 'rest_api_init', function () {
 	));
 });
 
-
 function devspot_get_shortlink($args) {
     $response = [
         'message' => '',
@@ -143,10 +197,62 @@ add_action( 'rest_api_init', function () {
 
 function devspot_shortlink_redirect(){
     global $wp;
+    global $wpdb;
     $url = $wp->request;
     if(strpos($url, "dt") === 0 && strlen($url)<= 8){
-        echo 'this is a shortlink';
-        exit;
+        $shortlinkTable = $wpdb->prefix . SHORTLINK_TABLE;
+        $shortlinkStatsTable = $wpdb->prefix . SHORTLINK_STATS_TABLE;
+        $shortlink = $wpdb->get_row( "SELECT * FROM $shortlinkTable WHERE shortLink = '$url'" );
+        if($shortlink != NULL){
+            $referer = 'direct';
+            if(!empty($_SERVER['HTTP_REFERER']))
+                $referer = $_SERVER['HTTP_REFERER'];
+            
+            $ip = get_client_ip();
+
+            $response = wp_remote_get("http://api.ipstack.com/$ip?access_key=e779deaa5f080abaf4d5feb40da9800f&format=1");
+            $response = json_decode($response['body']);
+            var_dump($response['country_code']);
+
+            /*$ch = curl_init(); 
+            curl_setopt($ch,CURLOPT_URL,"http://api.ipstack.com/$ip?access_key=e779deaa5f080abaf4d5feb40da9800f&format=1");
+            curl_setopt($ch,CURLOPT_RETURNTRANSFER,true);
+            $output=curl_exec($ch);
+            curl_close($ch);
+            $output = json_decode($output);
+            echo $output['country_name'];
+            /*
+            $curl = curl_init();
+            curl_setopt_array($curl, array(
+                CURLOPT_URL => "http://api.ipstack.com/$ip?access_key=e779deaa5f080abaf4d5feb40da9800f&format=1",                    
+                CURLOPT_CUSTOMREQUEST => "GET",
+            ));
+            $response = curl_exec($curl);
+            curl_close($curl);
+            $response = json_decode($response);*/
+            exit;
+            wp_redirect($shortlink->redirectLink);
+        }
     }
 }
 add_action('wp', 'devspot_shortlink_redirect');
+
+
+function get_client_ip() {
+    $ipaddress = '';
+    if (isset($_SERVER['HTTP_CLIENT_IP']))
+        $ipaddress = $_SERVER['HTTP_CLIENT_IP'];
+    else if(isset($_SERVER['HTTP_X_FORWARDED_FOR']))
+        $ipaddress = $_SERVER['HTTP_X_FORWARDED_FOR'];
+    else if(isset($_SERVER['HTTP_X_FORWARDED']))
+        $ipaddress = $_SERVER['HTTP_X_FORWARDED'];
+    else if(isset($_SERVER['HTTP_FORWARDED_FOR']))
+        $ipaddress = $_SERVER['HTTP_FORWARDED_FOR'];
+    else if(isset($_SERVER['HTTP_FORWARDED']))
+        $ipaddress = $_SERVER['HTTP_FORWARDED'];
+    else if(isset($_SERVER['REMOTE_ADDR']))
+        $ipaddress = $_SERVER['REMOTE_ADDR'];
+    else
+        $ipaddress = 'UNKNOWN';
+    return $ipaddress;
+}
