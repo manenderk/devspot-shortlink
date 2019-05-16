@@ -277,8 +277,10 @@ function devspot_get_stats($args) {
         $shortlinkTotalClicks = $wpdb->get_results("SELECT COUNT($shortlinkStatsTable.shortLinkId) as clicks FROM $shortlinkStatsTable, $shortlinkTable WHERE $shortlinkStatsTable.shortLinkId = $shortlinkTable.id AND $shortlinkTable.userId = $userId", ARRAY_A);
         $shortlinkStatsByCountry = $wpdb->get_results("SELECT count($shortlinkStatsTable.shortLinkId) as clicks, $shortlinkStatsTable.country from $shortlinkStatsTable, $shortlinkTable WHERE $shortlinkStatsTable.shortLinkId = $shortlinkTable.id AND $shortlinkTable.userId = $userId GROUP BY $shortlinkStatsTable.country", ARRAY_A);
         $shortlinkStatsByReferrer = $wpdb->get_results("SELECT count($shortlinkStatsTable.shortLinkId) as clicks, $shortlinkStatsTable.referer from $shortlinkStatsTable, $shortlinkTable WHERE $shortlinkStatsTable.shortLinkId = $shortlinkTable.id AND $shortlinkTable.userId = $userId GROUP BY $shortlinkStatsTable.referer", ARRAY_A);
+        $shortlinkTodayClicks = $wpdb->get_results("SELECT count($shortlinkStatsTable.shortLinkId) as clicks from $shortlinkStatsTable WHERE DATE(`visited`) = CURDATE()", ARRAY_A);
         $response['message'] = [
             'totalClicks'   => $shortlinkTotalClicks,
+            'todayClicks'   => $shortlinkTodayClicks,
             'byClicks'      => $shortlinkStatsByName,
             'byCountry'     => $shortlinkStatsByCountry,
             'byReferer'     => $shortlinkStatsByReferrer
