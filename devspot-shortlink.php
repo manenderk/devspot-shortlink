@@ -17,25 +17,7 @@ define('PLUGIN_VER', '0.0.2');
 
 global $my_nonce;
 
-function get_client_ip() {
-    $ipaddress = '';
-    if (isset($_SERVER['HTTP_CLIENT_IP']))
-        $ipaddress = $_SERVER['HTTP_CLIENT_IP'];
-    else if(isset($_SERVER['HTTP_X_FORWARDED_FOR']))
-        $ipaddress = $_SERVER['HTTP_X_FORWARDED_FOR'];
-    else if(isset($_SERVER['HTTP_X_FORWARDED']))
-        $ipaddress = $_SERVER['HTTP_X_FORWARDED'];
-    else if(isset($_SERVER['HTTP_FORWARDED_FOR']))
-        $ipaddress = $_SERVER['HTTP_FORWARDED_FOR'];
-    else if(isset($_SERVER['HTTP_FORWARDED']))
-        $ipaddress = $_SERVER['HTTP_FORWARDED'];
-    else if(isset($_SERVER['REMOTE_ADDR']))
-        $ipaddress = $_SERVER['REMOTE_ADDR'];
-    else
-        $ipaddress = 'UNKNOWN';
-    return $ipaddress;
-}
-
+//FUNCTION TO CREATE SHORTLINK TABLE
 function createTables(){
     require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
 
@@ -69,6 +51,7 @@ function createTables(){
     dbDelta( $sql );          
 }
 
+//FUNCTION TO UPDATE SHORTLINK TABLE
 function upgradeTables(){
     require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
 
@@ -100,6 +83,7 @@ function upgradeTables(){
     dbDelta( $sql );       
 }
 
+//UPDATE DB WHEN PLUGIN IS ACTIVATED OR UPDATED
 function operateDB(){
     try{
         $installed_ver = get_option("devspot_shortlink_db_version");
@@ -115,25 +99,28 @@ function operateDB(){
     }
 }
 
+//ACTIVATE PLUGIN
 function activate_devspot_shortlink() {
     operateDB();
     update_option('devspot_shortlink_db_version', PLUGIN_VER);
 }
 register_activation_hook( __FILE__, 'activate_devspot_shortlink' );
 
-
-function do_stuff(){
-        
-}
-
-function localize_variables(){
-    wp_localize_script( 'devspot-script', 'wpApiSettings', array(
-        'root' => esc_url_raw( rest_url() ),
-        'nonce' => wp_create_nonce( 'wp_rest' )
-    ) );
+//FUNCTION TO LOCALIZE VARIABLES FOR API
+function localize_variables(){	
+	$currentUrl = basename(array_shift(explode("?", get_permalink($post->ID))));
+	if($currentUrl == 'shortlink-dashboard'){
+		wp_localize_script( 'devspot-script', 'wpApiSettings', array(
+	        'root' => esc_url_raw( rest_url() ),
+	        'nonce' => wp_create_nonce( 'wp_rest' )
+	    ) );
+	}
+    
 }
 add_action('wp_enqueue_scripts', 'localize_variables', 10000);
 
+
+//FUNCTION TO ADD SHORTLINK
 function devspot_add_shortlink($args) {
     $response = [
         'message' => '',
@@ -183,6 +170,45 @@ add_action( 'rest_api_init', function () {
 	));
 });
 
+
+//FUNCTION TO Delete SHORTLINK
+function devspot_delete_shortlink($args) {
+    $response = [
+        'message' => '',
+        'status' => 'error'
+    ];
+
+    $data = $args->get_params();
+    if(!empty($data['shortlinkId'])){
+    	$current_user = wp_get_current_user();
+    	$userId = $current_user->ID;
+    	$shortLinkId = $data['shortlinkId'];
+    	global $wpdb;
+        $table_name = $wpdb->prefix . SHORTLINK_TABLE;
+        if( $wpdb->delete( $table_name, ['id' => $shortLinkId, 'userId' => $userId]) != false ){
+        	$response['status'] = 'success';
+    		$response['message'] = 'Shortlink Deleted';
+        }
+        else{
+        	$response['status'] = 'error';
+    		$response['message'] = 'Unable to delete shortlink';
+        }
+    }
+    else{
+    	$response['status'] = 'error';
+    	$response['message'] = 'Invalid shortlink';
+    }
+    $response = new WP_REST_Response( $response );
+    return $response; 
+}
+add_action( 'rest_api_init', function () {
+	register_rest_route( 'dshortlink/v1', '/delete-shortlink', array(
+		'methods' => 'POST',
+		'callback' => 'devspot_delete_shortlink',
+	));
+});
+
+//FUNCTION TO GET LIST OF SHORTLINKS
 function devspot_get_shortlink($args) {
     $response = [
         'message' => '',
@@ -214,6 +240,8 @@ add_action( 'rest_api_init', function () {
 	));
 });
 
+
+//FUNCTION TO REDIRECT USER IF A SHORTLINK IS ACCESSED
 function devspot_shortlink_redirect(){
     global $wp;
     global $wpdb;
@@ -256,6 +284,8 @@ function devspot_shortlink_redirect(){
 }
 add_action('wp', 'devspot_shortlink_redirect');
 
+
+//FUNCTION TO PROVIDE SHORTLINKS STATS
 function devspot_get_stats($args) {
     $response = [
         'message' => '',
@@ -298,3 +328,22 @@ add_action( 'rest_api_init', function () {
 	));
 });
 
+//FUNCTION TO GET CLIENT IP ADDRESS
+function get_client_ip() {	
+    $ipaddress = '';
+    if (isset($_SERVER['HTTP_CLIENT_IP']))
+        $ipaddress = $_SERVER['HTTP_CLIENT_IP'];
+    else if(isset($_SERVER['HTTP_X_FORWARDED_FOR']))
+        $ipaddress = $_SERVER['HTTP_X_FORWARDED_FOR'];
+    else if(isset($_SERVER['HTTP_X_FORWARDED']))
+        $ipaddress = $_SERVER['HTTP_X_FORWARDED'];
+    else if(isset($_SERVER['HTTP_FORWARDED_FOR']))
+        $ipaddress = $_SERVER['HTTP_FORWARDED_FOR'];
+    else if(isset($_SERVER['HTTP_FORWARDED']))
+        $ipaddress = $_SERVER['HTTP_FORWARDED'];
+    else if(isset($_SERVER['REMOTE_ADDR']))
+        $ipaddress = $_SERVER['REMOTE_ADDR'];
+    else
+        $ipaddress = 'UNKNOWN';
+    return $ipaddress;
+}
